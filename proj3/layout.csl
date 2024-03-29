@@ -1,0 +1,52 @@
+//param M: i16;
+//param N: i16;
+param width: i16;
+
+
+const LAUNCH: color = @get_color(8);
+
+const memcpy = @import_module("<memcpy/get_params>", .{
+    .width = width,
+    .height = 1,
+    .LAUNCH = LAUNCH
+});
+
+
+layout {
+    @set_rectangle(width,1);
+    for (@range(i16, width)) |x| {
+      @set_tile_code(x,0,"neighbour.csl", .{
+        .memcpy_params = memcpy.get_params(x)
+        });
+    }
+        
+        
+    // allow the host to write the data
+    // into variables
+    @export_name("npl",[*]f32,true);
+    @export_name("x",[*]f32,false);
+    @export_name("eis",[*]f32,true);
+    @export_name("eid",[*]f32,true);
+    @export_name("iseed",[*]i32,true);
+
+
+    // these variables is for transfering
+    // the data from device to host
+    @export_name("ssize",[*]f32,true);
+    @export_name("seid",[*]f32,true);
+    @export_name("seis",[*]f32,true);
+    @export_name("snid",[*]f32,true);
+
+    @export_name("sndssize",[*]f32,true);
+    @export_name("sndseid",[*]f32,true);
+    @export_name("sndsnid",[*]f32,true);
+    @export_name("sndseis",[*]f32,true);
+
+
+
+    @export_name("compute", fn() void);
+}
+
+
+
+

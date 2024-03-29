@@ -1,0 +1,92 @@
+{
+  "rpc_color": 8,
+  "rpc_symbols": [
+    {
+      "id": 3,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "eis",
+      "sym_name": "eis_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 4,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "eid",
+      "sym_name": "eid_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 10,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "sndssize",
+      "sym_name": "snd_sampled_size_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 8,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "seis",
+      "sym_name": "sampled_eis_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 7,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "seid",
+      "sym_name": "sampled_eid_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 12,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "sndsnid",
+      "sym_name": "snd_sampled_nid_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 13,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "sndseis",
+      "sym_name": "snd_sampled_eis_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 11,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "sndseid",
+      "sym_name": "snd_sampled_eid_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 14,
+      "kind": "Func",
+      "name": "compute",
+      "sym_name": "compute",
+      "type": "void"
+    },
+    {
+      "id": 6,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "ssize",
+      "sym_name": "sampled_size_ptr",
+      "type": "[*]f32"
+    },
+    {
+      "id": 9,
+      "immutable": 0,
+      "kind": "Var",
+      "name": "snid",
+      "sym_name": "sampled_nid_ptr",
+      "type": "[*]f32"
+    }
+  ]
+}
