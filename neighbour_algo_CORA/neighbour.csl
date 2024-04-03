@@ -1,0 +1,375 @@
+param memcpy_params : comptime_struct;
+
+
+const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
+// 256 is the batch_size of subgraph
+const lengthaa: i32 = 256;
+var eis: [lengthaa]f32;
+var eid: [lengthaa]f32;
+//var num_per_layer: [2]f32;
+//var x: [1]f32;
+
+// calculate the size of samples
+const total_size_sample: i32 = 9;
+var sampled_eis: [total_size_sample]f32;
+var sampled_eid: [total_size_sample]f32;
+var sampled_nid: [total_size_sample*2]f32;
+var sampled_size: [2]f32;
+
+var snd_sampled_eis: [total_size_sample*total_size_sample]f32;
+var snd_sampled_eid: [total_size_sample*total_size_sample]f32;
+var snd_sampled_nid: [total_size_sample*total_size_sample*2]f32;
+var snd_sampled_size: [2]f32;
+
+// this is for testing randon_algorithm
+//var inter_seed: [1]i32;
+
+
+//var count_len: f32;
+
+var count: i32;
+
+
+
+// create pointer to variables
+// some variables may need to recieve
+// value from host to device
+var eis_ptr: [*]f32 = &eis;
+var eid_ptr: [*]f32 = &eid;
+//var npl_ptr: [*]f32 = &num_per_layer;
+//var is_ptr : [*]i32 = &inter_seed;
+//const x_ptr:[*]f32 = &x;
+
+
+// sampled result
+// this part is used to memcpy the data
+// from device to the host
+var total_size_sample_ptr: *i32 = &total_size_sample;
+var sampled_eis_ptr: [*]f32 = &sampled_eis;
+var sampled_eid_ptr: [*]f32 = &sampled_eid;
+var sampled_nid_ptr: [*]f32 = &sampled_nid;
+var sampled_size_ptr: [*]f32 = &sampled_size;
+
+var snd_sampled_eis_ptr: [*]f32 = &snd_sampled_eis;
+var snd_sampled_eid_ptr: [*]f32 = &snd_sampled_eid;
+var snd_sampled_nid_ptr: [*]f32 = &snd_sampled_nid;
+var snd_sampled_size_ptr: [*]f32 = &snd_sampled_size;
+
+
+
+
+// this is the function to achieve generating random number
+//fn generate_random() void{
+	//x[0] = @as(f32,random_range(inter_seed[0],10));
+	// x[0] = @as(f32,random_algorithm(inter_seed[0]));
+	//x[0] =get_degree(0.0);
+	//x[0] = 0;
+//}
+
+
+
+// the funtion will check how many nodes connects
+// to the input_node
+fn get_input_length(input_node: f32) f32 {
+	var temp: f32 = 0.0;
+	for(@range(i16, lengthaa)) |idx| {
+		if (eid[idx] == input_node){
+			temp += 1.0;
+		}
+	}
+	
+	// if we cannot find another node related to
+	// the input_node, we need to return 0.0
+	return temp;
+}
+
+
+// this function will select a relavent node
+// based on the offset
+fn get_degree_offset(input_node: f32, offset: f32) f32 {
+//	if (offset == 0.0) {
+//		return -1.0;
+//	}
+
+	// value:200 means the dimensions os eis/eid
+	for(@range(i16, lengthaa)) |idx| {
+		if (eid[idx] == input_node){
+			var ttp: i32 = @as(i32,idx) + @as(i32,offset);
+			return eis[ttp];
+		}
+	}
+	
+	// if the offset is 0, or the corresponding node
+	// does not exist, the function will return -1.0
+	return -1.0;
+}
+
+
+// this function use LCG algorithm to create random value
+// this is simple implement
+fn random_algorithm(seed: i32) i32 {
+	var temp: i32 = (1103515245 * seed + 12345) 
+		& ((1 << 31) - 1);
+	return temp;
+}
+
+
+// this is for random select a value from a range
+fn random_range(seed: i32, restriction: i32) i32 {
+	var temp: i32 =  random_algorithm(seed);
+	var result: i32 = temp % restriction;
+	return result;
+}
+
+
+// this function try to get the neighbour of the input_node
+// since CSL does not provide the dynamic array
+// we have a solution for only providing one node 
+// which is related to input_node
+fn get_degree(input_node: f32, seed_num: i32) f32 {
+	var temp: f32 = get_input_length(input_node);
+	if (temp == 1.0) {
+		// set  temp = 0.0
+		return get_degree_offset(input_node, temp-1.0);
+	} else if (temp == 0.0) {
+	// if there is no corresponding node, it will return -1.0
+		return -1.0;
+	} else {
+		// try to achieve random select
+		//var tttp: i32 = 2;
+		return get_degree_offset(input_node, 
+			@as(f32,random_range(seed_num, @as(i32,temp))));
+	}
+	
+}
+
+
+// this is the main function of this algorithm
+fn compute() void {
+  //generate_random();
+  neighbour_sample();
+  sys_mod.unblock_cmd_stream();	
+}
+
+
+// this function is used to check
+// the current node whether exist
+// in the sampled_nid
+// === if the node exist, return true
+// otherwise false
+fn chech_exist(check_node: f32, check_list: [*]f32, begin: i32, length: i32) bool {
+	if (length == 0) {
+		return false;
+	}
+	for(@range(i32, begin,length,1)) |idx| {
+		if (check_node == check_list[idx]) {
+			return true;
+		}
+
+	}
+	return false;
+}
+
+// this function aims to get the unique node
+// of the subgraph
+fn build_nid(list_a: [*]f32, list_b: [*]f32, list_c:[*]f32,length_a:i32) void {
+	// here, total_size_sample means the size of sampled eis/eid
+	count = 0;
+	for (@range(i32, length_a)) |idx| {
+		if (chech_exist(list_a[idx],list_c,0,count) == false) {
+			list_c[count] = list_a[idx];
+			count = count + 1;
+		}	
+	}
+
+
+	for (@range(i32, length_a)) |idx| {
+		if (chech_exist(list_b[idx],list_c,0,count) == false) {
+			list_c[count] = list_b[idx];
+			count = count + 1;
+		}
+	}
+
+}
+
+fn mapping_val(need_size: i32, list_a:[*]f32, list_b:[*]f32, list_c:[*]f32) void {
+	// mapping n_id
+	// this part is for replacing
+	// the source node with nid[source_node[idx]]
+
+
+	// only use this way
+	// these values may
+	// correctly map
+	var temppppp: [total_size_sample*total_size_sample]f32;
+
+	for (@range(i32, need_size)) |idx| {
+		for (@range(i32,0,count,1)) |snid_idx| {
+			if(list_c[snid_idx] == list_a[idx]) {
+				temppppp[idx] = @as(f32,snid_idx);
+			}
+		}
+	}
+
+	for (@range(i32, need_size)) |idx| {
+		list_a[idx] = temppppp[idx];
+
+	}
+
+
+	var temppppppp: [total_size_sample*total_size_sample]f32;
+	
+	for (@range(i32, need_size)) |idx| {
+		for (@range(i32, 0, count,1)) |snid_idx| {
+			if(list_c[snid_idx] == list_b[idx]) {
+				temppppp[idx] = @as(f32,snid_idx);
+			}
+		}
+	}
+
+	for (@range(i32, need_size)) |idx| {
+		list_b[idx] = temppppp[idx];
+
+	}
+
+
+
+	//for (@range(i32, count)) |idx| {
+	//	for (@range(i32,total_size_sample)) |eis_idx| {
+	//		if (sampled_nid[idx] == sampled_eis[eis_idx]){
+	//			sampled_eis[eis_idx] = @as(f32,idx);
+	//		}
+	//	}
+
+	//	for (@range(i32,total_size_sample)) |eid_idx| {
+	//		if (sampled_nid[idx] == sampled_eid[eid_idx]){
+	//			sampled_eid[eid_idx] = @as(f32,idx);
+	//		}
+	//	}
+	//}
+
+}
+
+
+
+// this function is used to calculate the size of adj matrix
+fn calculate_sample_size(need_size: i32, list_a:[*]f32, list_b:[*]f32) void {
+	var temp_count: i32 = 0;
+	var temp_record: [total_size_sample*total_size_sample]f32;
+	for (@range(i32, need_size)) |idx| {
+		if (chech_exist(list_a[idx], &temp_record, 0,temp_count) == false){
+				temp_record[temp_count] = list_a[idx];
+				temp_count += 1;
+			}
+	}
+	list_b[0] = @as(f32,count);
+	list_b[1] = @as(f32,temp_count);
+}
+
+
+
+// this function is used for achieving random sampling
+// the way of achieving this sampling is a little bit different
+fn neighbour_sample() void {
+	for (@range(i32, total_size_sample)) |idx| {
+		// Number 10 means the total length of input data
+		var temp_val: i32 = random_range(idx,lengthaa);
+		sampled_eis[idx] = eis[temp_val];
+		sampled_eid[idx] = eid[temp_val];
+	}
+
+	build_nid(sampled_eid_ptr,sampled_eis_ptr,sampled_nid_ptr,total_size_sample);
+	mapping_val(total_size_sample, sampled_eid_ptr, sampled_eis_ptr,sampled_nid_ptr);
+	calculate_sample_size(total_size_sample, sampled_eid_ptr,sampled_size_ptr);
+
+	var pos_count: i32 = 0;
+	var accu_sum: i32 = 0;
+	
+	for (@range(i32, total_size_sample)) |i| {
+		var idexx: i32 = @as(i32,sampled_eid[i]);
+		var target_node: f32 = sampled_nid[idexx];
+		for (@range(i32, total_size_sample)) |j|{
+			var temp_val: f32 = get_degree(target_node,j);
+			if (temp_val == target_node) {
+				continue;
+			}
+
+			if ((chech_exist(temp_val, &snd_sampled_eid,accu_sum,pos_count) == false)){
+				snd_sampled_eis[pos_count] = target_node;
+				snd_sampled_eid[pos_count] = temp_val;
+				pos_count = pos_count + 1;
+			}
+		}
+		accu_sum = pos_count;
+	}
+
+	build_nid(snd_sampled_eid_ptr, snd_sampled_eis_ptr,snd_sampled_nid_ptr,total_size_sample*total_size_sample);
+	mapping_val(pos_count, snd_sampled_eid_ptr, snd_sampled_eis_ptr,snd_sampled_nid_ptr);
+	calculate_sample_size(total_size_sample*total_size_sample, snd_sampled_eid_ptr, snd_sampled_size_ptr);
+
+}
+
+
+
+// this comptime is used for transfer data
+// from device to host or
+// from host to device
+comptime {
+
+  //@export_symbol(is_ptr,"iseed");	
+  //@export_symbol(npl_ptr,"npl");
+  @export_symbol(eis_ptr,"eis");
+  @export_symbol(eid_ptr,"eid");
+  //@export_symbol(x_ptr, "x");
+
+  // return the result to the host
+  @export_symbol(sampled_size_ptr, "ssize");
+  @export_symbol(sampled_eid_ptr, "seid");
+  @export_symbol(sampled_nid_ptr, "snid");
+  @export_symbol(sampled_eis_ptr, "seis");
+
+  @export_symbol(snd_sampled_size_ptr, "sndssize");
+  @export_symbol(snd_sampled_eid_ptr, "sndseid");
+  @export_symbol(snd_sampled_nid_ptr, "sndsnid");
+  @export_symbol(snd_sampled_eis_ptr, "sndseis");
+
+
+
+  @export_symbol(compute);
+  @rpc(@get_data_task_id(sys_mod.LAUNCH));
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
